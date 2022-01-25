@@ -1,0 +1,132 @@
+---
+title: "Clean UTSW Demographics and Covid Staging Data"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Background
+
+## Project 
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+This file cleans the demographics and daily Covid staging data (`dm_covid_stg_11.08.21.csv`) and prepares for analysis (e.g., create new variables and transform variables to proper data type). The resulting dataframe (`df`) is then de-duplicated to create another dataset where each row represents a unique patient (`one_row_per_pt`).
+
+## Source Data
+  - Demographics for Covid Patients (`COVID_Reg_Hosp_Demographics_03012020_123121_FINAL.csv`)
+  - Ordinal Scale Data for Covid Patients (`UTSW_Ordinal_Scale_data_unt_12312021_FINAL.csv`)
+  
+# Load required packages 
+```{r Load packages}
+library(tidyverse)
+library(forcats)
+```
+
+# Import and clean ordinal scale (staging) data
+```{r Import and clean ordinal scale (staging) data}
+stage_raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/raw/UTSW_Ordinal_Scale_data_unt_12312021_FINAL.csv")
+
+stage <- stage_raw %>% 
+    filter(!is.na(ordinal_scale_final)) %>% 
+    select(PAT_ID, event_time, ordinal_scale_final, HSP_INITIAL_DATE) %>% 
+    mutate(date = as.Date(event_time)) %>% 
+    rename(ID = PAT_ID,
+           stage = ordinal_scale_final) %>% 
+    group_by(ID, date) %>% 
+    mutate(stage = max(stage)) %>% 
+    distinct(ID, date, stage)
+```
+
+# Import and clean demographic data 
+```{r Import and clean demographic data }
+demog_raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/raw/COVID_Reg_Hosp_Demographics_03012020_123121_FINAL.csv")
+
+demog <- demog_raw %>%  
+    distinct(PAT_ID, BIRTH_DATE, .keep_all = T) %>% 
+    rename(ID = PAT_ID,
+           BMI = Initial_BMI) %>% 
+    mutate(age = as.numeric((as.Date(ADM_DATE) - as.Date(BIRTH_DATE)) / 365.25),
+           sex = factor(Sex),
+           race = factor(Race),
+           ethnicity = factor(Ethnic_Group),
+           zip = as.character(Zip_Code)) %>% 
+    select(ID, age, sex, race, ethnicity, zip, BMI)
+```
+
+# Collapse levels for ethnicity and race variables
+Make sure levels align with those in the UCSF dataset, so the two can be compared.
+```{r Collapse levels for race and ethnicity vars }
+# Collapse levels for ethnicity and race variables (aligning with UCSF dataset)
+demog$ethnicity <- fct_collapse(demog$ethnicity,
+                                "Not Hispanic or Latino" = c("Non-Hispanic/Latino", "White"),
+                                "Unknown" = c("Unknown", "Declined"))
+
+demog$race <- fct_collapse(demog$race,
+                           "Other" = c("Some other race", "American Indian or Alaska Native"),
+                           "Unknown" = c("Unavailable/Unknown", "Declined"))
+```
+
+# Merge daily staging and demographics tables, and rearrange order of variables
+```{r Merge demog and staging datasets}
+all_pt_days <- inner_join(stage, demog, by = "ID") %>% 
+    relocate(date, .before=age) %>% 
+    relocate(stage, .before=age)
+```
+
+# Group by ID then create new variables and assign to `all_pt_days` 
+
+## Variables include:
+
+- LOS
+- max_stage
+- date_adm
+- date_disc
+- stage_adm
+- stage_disc
+- end_in_death
+```{r Mutate variables: LOS, max_stage, date_adm, date_disc, stage_adm, stage_disc, end_in_death}
+all_pt_days <- all_pt_days %>% 
+    group_by(ID) %>% 
+    mutate(stage = factor(stage,
+                          ordered = TRUE,
+                          levels = c("4", "5", "6", "7", "8", "9", "10")),
+           LOS = as.integer(round(max(date) - min(date), 1)),
+           max_stage = factor(max(stage), 
+                              ordered = TRUE, 
+                              levels = c("4", "5", "6", "7", "8", "9", "10")), 
+           date_adm = min(date),
+           date_disc = max(date),
+           stage_adm = factor(stage[date==min(date)],  # could also use as.integer to transform stage variables to integer type 
+                              ordered = TRUE,
+                              levels = c("4", "5", "6", "7", "8", "9")),
+           stage_disc = factor(stage[date==max(date)], 
+                               ordered = TRUE, 
+                               levels = c("4", "5", "6", "7", "8", "9", "10")),
+           end_in_death = factor(ifelse(max_stage==10, 1, 0)))
+
+# Save resulting df as CSV and RDS
+write_csv(all_pt_days, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_all_pt_days.csv")
+saveRDS(all_pt_days, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_all_pt_days.rds")
+
+```
+
+# Remove duplicates to create df that contains one row per unique patient
+```{r}
+unique_pts <- all_pt_days %>% 
+    distinct(ID, .keep_all = T) %>% 
+    select(-c(date, stage))
+
+# Save resulting df as CSV and RDS
+write_csv(unique_pts, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_unique_pts.csv")
+saveRDS(unique_pts, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_unique_pts.rds")
+
+```
+
