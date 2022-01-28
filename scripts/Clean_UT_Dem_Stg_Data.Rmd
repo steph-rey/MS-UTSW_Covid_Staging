@@ -93,6 +93,7 @@ all_pt_days <- inner_join(stage, demog, by = "ID") %>%
 - stage_disc
 - end_in_death
 ```{r Mutate variables: LOS, max_stage, date_adm, date_disc, stage_adm, stage_disc, end_in_death}
+
 all_pt_days <- all_pt_days %>% 
     group_by(ID) %>% 
     mutate(stage = factor(stage,
@@ -104,29 +105,44 @@ all_pt_days <- all_pt_days %>%
                               levels = c("4", "5", "6", "7", "8", "9", "10")), 
            date_adm = min(date),
            date_disc = max(date),
-           stage_adm = factor(stage[date==min(date)],  # could also use as.integer to transform stage variables to integer type 
+           stage_adm = factor(stage[date==min(date)],  # Can also use as.integer to transform stage variables to integer type?
                               ordered = TRUE,
                               levels = c("4", "5", "6", "7", "8", "9")),
            stage_disc = factor(stage[date==max(date)], 
                                ordered = TRUE, 
                                levels = c("4", "5", "6", "7", "8", "9", "10")),
-           end_in_death = factor(ifelse(max_stage==10, 1, 0)))
+           end_in_death = factor(ifelse(max_stage==10, 1, 0))) %>% 
+        filter(LOS>1)         # Exclude patients where LOS<=1 -- only include inpatients 
+```
 
+# Create summary table and remove any extreme LOS outliers 
+```{r Create summary table and remove any extreme LOS outliers }
+summary(all_pt_days)
+
+# Looking at summary table, there is a very extreme outlier (one patient that has a LOS of 30,000 days)... we need to remove this outlier from the dataset
+all_pts_days <- all_pt_days[-which(all_pt_days$ID=="Z7784695"), ]
+```
+
+# Save `all_pt_days` as CSV and RDS
+```{r Save `all_pt_days` as CSV and RDS}
 # Save resulting df as CSV and RDS
 write_csv(all_pt_days, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_all_pt_days.csv")
 saveRDS(all_pt_days, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_all_pt_days.rds")
-
 ```
 
 # Remove duplicates to create df that contains one row per unique patient
-```{r}
+```{r Remove duplicates to create table with one row per unique patient}
 unique_pts <- all_pt_days %>% 
     distinct(ID, .keep_all = T) %>% 
     select(-c(date, stage))
 
-# Save resulting df as CSV and RDS
+# Number of unique pts in `all_pts_days` = 2,840, so there should be 2,840 rows in the new dataset
+n_distinct(all_pt_days$ID)
+```
+
+# Save `unique_pts` as CSV and RDS
+```{r Save `unique_pts` as CSV and RDS}
 write_csv(unique_pts, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_unique_pts.csv")
 saveRDS(unique_pts, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_unique_pts.rds")
-
 ```
 
