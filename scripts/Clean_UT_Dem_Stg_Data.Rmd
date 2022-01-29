@@ -113,43 +113,43 @@ df_ut_full <- df_ut_full %>%
                                levels = c("4", "5", "6", "7", "8", "9", "10")),
            end_in_death = factor(ifelse(max_stage==10, 1, 0))) %>% 
         filter(LOS>=1)         # Exclude patients where LOS=0
-```
-
-# Create summary table and remove any extreme LOS outliers 
-```{r Create summary table and remove any extreme LOS outliers }
-summary(df_ut_full)
-
-filter(df_ut_full, LOS==0) %>% count()
-
-# Looking at summary table, there is a very extreme LOS outlier 
-# Encounter IDs "635651898" and "636351342" have a LOS of >30,000 days
-# Need to remove these data for now 
-  # EncID 635651898
-  # EncID 636351342
-df_ut_full <- df_ut_full[which(df_ut_full$ID!="636351342", )]
 
 ```
 
-# Save `all_pt_days` as CSV and RDS
-```{r Save `all_pt_days` as CSV and RDS}
+# Identify and remove LOS extreme outliers
+```{r Identify and remove LOS extreme outliers}
+# Order by LOS descending to view LOS outliers 
+arrange(df_ut_full, desc(LOS))
+
+# Encounter IDs "635651898" and "636351342" have a LOS of >30,000 days -- need to remove these for now 
+
+# Assign IDs to remove to chr vector `omit`
+omit <- c("635651898", "636351342")
+
+# Filter to exclude these IDs 
+df_ut_full <- filter(df_ut_full, !(ID %in% omit))
+```
+
+# Save `df_ut_full` as CSV and RDS
+```{r Save `df_ut_full` as CSV and RDS}
 # Save resulting df as CSV and RDS
-write_csv(all_pt_days, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_all_pt_days.csv")
-saveRDS(all_pt_days, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_all_pt_days.rds")
+write_csv(df_ut_full, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_all_pt_days.csv")
+saveRDS(df_ut_full, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_all_pt_days.rds")
 ```
 
 # Remove duplicates to create df that contains one row per unique patient
 ```{r Remove duplicates to create table with one row per unique patient}
-unique_pts <- all_pt_days %>% 
+df_ut_unique <- df_ut_full %>% 
     distinct(ID, .keep_all = T) %>% 
     select(-c(date, stage))
 
-# Number of unique pts in `all_pts_days` = 2,840, so there should be 2,840 rows in the new dataset
-n_distinct(all_pt_days$ID)
+# Number of unique pts in `df_ut_full` = 3,180, so there should be 3,180 rows in the new dataset
+n_distinct(df_ut_unique$ID)
 ```
 
-# Save `unique_pts` as CSV and RDS
-```{r Save `unique_pts` as CSV and RDS}
-write_csv(unique_pts, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_unique_pts.csv")
-saveRDS(unique_pts, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/dm_stg_unique_pts.rds")
+# Save `df_ut_unique` as CSV and RDS
+```{r Save `df_ut_unique` as CSV and RDS}
+write_csv(df_ut_unique, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_unique_pts.csv")
+saveRDS(df_ut_unique, file="/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_unique_pts.rds")
 ```
 
