@@ -38,3 +38,5 @@ rsconnect/
 # Ignore all data files
 data/
 
+# Ignore html files generated from knitting Rmd
+*.html
