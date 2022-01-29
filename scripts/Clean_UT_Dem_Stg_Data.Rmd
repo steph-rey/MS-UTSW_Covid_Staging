@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
 
 ## Description
-This file cleans the demographics and daily Covid staging data (`dm_covid_stg_11.08.21.csv`) and prepares for analysis (e.g., create new variables and transform variables to proper data type). The resulting dataframe (`df`) is then de-duplicated to create another dataset where each row represents a unique patient (`one_row_per_pt`).
+This file cleans the demographics and daily Covid staging data and prepares for analysis (e.g., create new variables and transform variables to proper data type). The resulting dataframe (`df_ut_full`) is then de-duplicated to create another dataset where each row represents a unique patient encounter (`df_ut_unique`).
 
 ## Source Data
   - Demographics for Covid Patients (`COVID_Reg_Hosp_Demographics_03012020_123121_FINAL.csv`)
@@ -36,9 +36,9 @@ stage_raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/
 
 stage <- stage_raw %>% 
     filter(!is.na(ordinal_scale_final)) %>% 
-    select(PAT_ID, event_time, ordinal_scale_final, HSP_INITIAL_DATE) %>% 
+    select(PAT_ENC_CSN_ID_HSP, event_time, ordinal_scale_final, HSP_INITIAL_DATE) %>% 
     mutate(date = as.Date(event_time)) %>% 
-    rename(ID = PAT_ID,
+    rename(ID = PAT_ENC_CSN_ID_HSP,
            stage = ordinal_scale_final) %>% 
     group_by(ID, date) %>% 
     mutate(stage = max(stage)) %>% 
@@ -50,8 +50,8 @@ stage <- stage_raw %>%
 demog_raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/raw/COVID_Reg_Hosp_Demographics_03012020_123121_FINAL.csv")
 
 demog <- demog_raw %>%  
-    distinct(PAT_ID, BIRTH_DATE, .keep_all = T) %>% 
-    rename(ID = PAT_ID,
+    distinct(PAT_ENC_CSN_ID_REG, BIRTH_DATE, .keep_all = T) %>% 
+    rename(ID = PAT_ENC_CSN_ID_REG,
            BMI = Initial_BMI) %>% 
     mutate(age = as.numeric((as.Date(ADM_DATE) - as.Date(BIRTH_DATE)) / 365.25),
            sex = factor(Sex),
@@ -74,14 +74,14 @@ demog$race <- fct_collapse(demog$race,
                            "Unknown" = c("Unavailable/Unknown", "Declined"))
 ```
 
-# Merge daily staging and demographics tables, and rearrange order of variables
+# Merge daily staging and demographics tables, rearrange order of variables, and assign to `df_ut_full`
 ```{r Merge demog and staging datasets}
-all_pt_days <- inner_join(stage, demog, by = "ID") %>% 
+df_ut_full <- inner_join(stage, demog, by = "ID") %>% 
     relocate(date, .before=age) %>% 
     relocate(stage, .before=age)
 ```
 
-# Group by ID then create new variables and assign to `all_pt_days` 
+# Group by ID then create new variables 
 
 ## Variables include:
 
@@ -94,7 +94,7 @@ all_pt_days <- inner_join(stage, demog, by = "ID") %>%
 - end_in_death
 ```{r Mutate variables: LOS, max_stage, date_adm, date_disc, stage_adm, stage_disc, end_in_death}
 
-all_pt_days <- all_pt_days %>% 
+df_ut_full <- df_ut_full %>% 
     group_by(ID) %>% 
     mutate(stage = factor(stage,
                           ordered = TRUE,
@@ -112,15 +112,22 @@ all_pt_days <- all_pt_days %>%
                                ordered = TRUE, 
                                levels = c("4", "5", "6", "7", "8", "9", "10")),
            end_in_death = factor(ifelse(max_stage==10, 1, 0))) %>% 
-        filter(LOS>1)         # Exclude patients where LOS<=1 -- only include inpatients 
+        filter(LOS>=1)         # Exclude patients where LOS=0
 ```
 
 # Create summary table and remove any extreme LOS outliers 
 ```{r Create summary table and remove any extreme LOS outliers }
-summary(all_pt_days)
+summary(df_ut_full)
 
-# Looking at summary table, there is a very extreme outlier (one patient that has a LOS of 30,000 days)... we need to remove this outlier from the dataset
-all_pts_days <- all_pt_days[-which(all_pt_days$ID=="Z7784695"), ]
+filter(df_ut_full, LOS==0) %>% count()
+
+# Looking at summary table, there is a very extreme LOS outlier 
+# Encounter IDs "635651898" and "636351342" have a LOS of >30,000 days
+# Need to remove these data for now 
+  # EncID 635651898
+  # EncID 636351342
+df_ut_full <- df_ut_full[which(df_ut_full$ID!="636351342", )]
+
 ```
 
 # Save `all_pt_days` as CSV and RDS
