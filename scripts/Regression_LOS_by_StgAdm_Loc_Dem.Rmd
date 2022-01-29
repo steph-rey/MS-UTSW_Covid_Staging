@@ -1,0 +1,144 @@
+---
+title: "Linear Regression Analysis -- Can LOS be explained by admission stage, location, and demographics?"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Background
+
+## Project 
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+
+This script generates multivariate linear regression models to evaluate the extent to which length of stay can be explained by admission stage, location/facility, and demographics (including age, sex, race, and ethnicity). Model parameters include: 
+
+  * `LOS` -> Length of stay that patient was hospitalized 
+    - Discharge date - admission date (in days)
+    - LOS is not normally distributed (very long right tail), so most likely needs to be transformed (consider log, square root, cubic root, or rank scale)
+  * `stage_adm` -> Admission stage
+    - Also should consider categorizing admission stage into moderate (stages 4-5) and severe (stages 6+)
+  * `age` -> Age (in years) of patient at admission
+  * `sex` -> Biological sex of patient (male, female)
+  * `race` -> Race categorized into: Black, White, Asian, Hawaiian/Pacific Islander, Other, Unknown/Declined)
+    - Still unsure how to treat `race`
+  * `ethnicity` -> Ethnicity categorized into: Hispanic/Latino, Not Hispanic, Unknown/Declined
+
+Each model is checked to meet the assumptions of linear regression and evaluated by its performance relative to other models. 
+
+## Source Data
+
+    * UT cleaned unique data
+    * UC cleaned unique data (`dm_stg_unique_pt_11.08.21.csv`) 
+
+## Important Notes 
+
+  * Decided a-priori that we would include stage of admission, age, and race.
+  * Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly. 
+  * Included age as a polynomial to 2nd degree in regression formula. Tried out poly(age, 3) and poly(age, 4) too, but resulting p-values were less significant. 
+  * Try different transformations of outcome (LOS): Log, square root, cubic root.
+  * Applied mgcv::gam with spline or smooth function (s(age)), which confirmed that we should use age as polynomial.
+  * As of now, undecided on how to treat or parameterize race. Regression results show significance for Race-Other category, and we are not sure why this could be. 
+
+# Load required packages
+```{r Load required packages, include=F}
+library(tidyverse)
+library(tidymodels)
+library(performance) # check model assumptions and performance
+library(vip) # calculate and visualize feature importance 
+```
+
+# Import and preview data 
+```{r Import and preview data}
+ut <- readRDS()
+uc <- readRDS()
+```
+
+# Merge datasets, keep only relevant variables, and create variable for transformed outcome (LOS)
+```{r Merge datasets, select relevant variables for regression analysis, and create t.LOS var}
+# Merge datasets and select relevant vars for regression analysis 
+regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
+  relocate(loc, .after = "ID") %>% 
+    select(ID, loc, LOS, stage_adm, age, sex, race, ethnicity)
+
+# Add new variable for transformed LOS `t.LOS`
+regdf <- regdf %>% 
+    mutate(t.LOS = sqrt(LOS))
+```
+
+# Fit LOS to linear regression model including all variables -- FULL MODEL
+LOS ~ stage_adm + loc + age + race + ethnicity + sex
+```{r Linear regression model m1}
+# Fit model
+m1 <- lm(t.LOS ~ stage_adm + loc + poly(age, 2) + race + ethnicity + sex, data = regdf)
+
+# Summarize regression output
+summary(m1)
+
+# Check assumptions
+check_model(m1)
+
+# Check performance
+model_performance(m1)
+```
+
+# Fit LOS to linear regression model including all variables except for stage_adm 
+LOS ~ loc + age + race + ethnicity + sex
+```{r Linear regression model m2}
+# Fit model
+m2 <- lm(t.LOS ~ loc + poly(age, 2) + race + ethnicity + sex, data = regdf)
+
+# Summarize regression output
+summary(m2)
+
+# Check assumptions 
+check_model(m2)
+
+# Check performance
+model_performance(m2)
+```
+
+# Fit LOS to linear regression model including all variables except for loc
+LOS ~ stage_adm + age + race + ethnicity + sex
+```{r Linear regression model m3}
+# Fit model
+m3 <- lm(t.LOS ~ stage_adm + poly(age, 2) + race + ethnicity + sex, data = regdf)
+
+# Summarize regression output
+summary(m3)
+
+# Check assumptions
+check_model(m3)
+
+# Check performance
+model_performance(m3)
+```
+
+# NOTES
+
+    * Compare R^2 for all models. Which has the highest?
+    * What about comparing AIC?
+    * How to deal with age? Treat it as polynomial?
+    * Other methods to consider:
+        * Transform LOS on log, square root, cubic root, or rank scale 
+        * Rank regression
+        * Robust regression
+
+
+
+
+
+
+
+
+
+
+
