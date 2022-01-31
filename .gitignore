@@ -40,3 +40,7 @@ data/
 
 # Ignore html files generated from knitting Rmd
 *.html
+
+# Ignore pdf files generated from knitting Rmd
+*.pdf
+
