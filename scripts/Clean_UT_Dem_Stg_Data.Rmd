@@ -35,14 +35,15 @@ library(forcats)
 stage_raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/raw/UTSW_Ordinal_Scale_data_unt_12312021_FINAL.csv")
 
 stage <- stage_raw %>% 
-    filter(!is.na(ordinal_scale_final)) %>% 
-    select(PAT_ENC_CSN_ID_HSP, event_time, ordinal_scale_final, HSP_INITIAL_DATE) %>% 
-    mutate(date = as.Date(event_time)) %>% 
-    rename(ID = PAT_ENC_CSN_ID_HSP,
-           stage = ordinal_scale_final) %>% 
-    group_by(ID, date) %>% 
-    mutate(stage = max(stage)) %>% 
-    distinct(ID, date, stage)
+  filter(!is.na(ordinal_scale_final)) %>% 
+  select(PAT_ENC_CSN_ID_HSP, event_time, ordinal_scale_final, HSP_INITIAL_DATE) %>% 
+  rename(ID = PAT_ENC_CSN_ID_HSP,
+         stage = ordinal_scale_final) %>% 
+  mutate(date = as.Date(event_time),
+         ID = as.character(ID)) %>% 
+  group_by(ID, date) %>%
+  mutate(stage = max(stage)) %>% 
+  distinct(ID, date, stage)
 ```
 
 # Import and clean demographic data 
@@ -53,7 +54,8 @@ demog <- demog_raw %>%
     distinct(PAT_ENC_CSN_ID_REG, BIRTH_DATE, .keep_all = T) %>% 
     rename(ID = PAT_ENC_CSN_ID_REG,
            BMI = Initial_BMI) %>% 
-    mutate(age = as.numeric((as.Date(ADM_DATE) - as.Date(BIRTH_DATE)) / 365.25),
+    mutate(ID = as.character(ID), 
+           age = as.numeric((as.Date(ADM_DATE) - as.Date(BIRTH_DATE)) / 365.25),
            sex = factor(Sex),
            race = factor(Race),
            ethnicity = factor(Ethnic_Group),
