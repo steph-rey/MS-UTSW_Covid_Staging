@@ -36,49 +36,60 @@ Each model is checked to meet the assumptions of linear regression and evaluated
 
 ## Source Data
 
-    * UT cleaned unique data
-    * UC cleaned unique data (`dm_stg_unique_pt_11.08.21.csv`) 
-
-## Important Notes 
-
-  * Decided a-priori that we would include stage of admission, age, and race.
-  * Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly. 
-  * Included age as a polynomial to 2nd degree in regression formula. Tried out poly(age, 3) and poly(age, 4) too, but resulting p-values were less significant. 
-  * Try different transformations of outcome (LOS): Log, square root, cubic root.
-  * Applied mgcv::gam with spline or smooth function (s(age)), which confirmed that we should use age as polynomial.
-  * As of now, undecided on how to treat or parameterize race. Regression results show significance for Race-Other category, and we are not sure why this could be. 
+  * UTSW: `ut_df_unique_pts.rds`
+  * UCSF:  `dm_stg_unique_pt_11.08.21.rds`
 
 # Load required packages
 ```{r Load required packages, include=F}
 library(tidyverse)
 library(tidymodels)
 library(performance) # check model assumptions and performance
-library(vip) # calculate and visualize feature importance 
+library(vip) # calculate and visualize feature importance
+library(polspline)
 ```
 
-# Import and preview data 
+# Import and preview data; keep only relevant variables
 ```{r Import and preview data}
-ut <- readRDS()
-uc <- readRDS()
+ut <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_unique_pts.rds") %>% 
+  select(ID, age, sex, race, ethnicity, LOS, max_stage, stage_adm)
+
+uc <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Covid_Staging/data/dm_stg_unique_pt_11.08.21.rds") %>% 
+  select(ID, age, sex, race, ethnicity, LOS, max_stage, stage_adm)
 ```
 
 # Merge datasets, keep only relevant variables, and create variable for transformed outcome (LOS)
 ```{r Merge datasets, select relevant variables for regression analysis, and create t.LOS var}
+# Since max_stage and stage_adm are coded as ordinal vars for UT, need to do the same for UC 
+uc <- uc %>%
+  mutate(max_stage = factor(max_stage, ordered = TRUE, levels = c("4", "5", "6", "7", "8", "9", "10")), 
+         stage_adm = factor(stage_adm, ordered = TRUE, levels = c("4", "5", "6", "7", "8", "9")))
+
 # Merge datasets and select relevant vars for regression analysis 
 regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
-  relocate(loc, .after = "ID") %>% 
-    select(ID, loc, LOS, stage_adm, age, sex, race, ethnicity)
+  relocate(loc, .after = "ID") 
 
-# Add new variable for transformed LOS `t.LOS`
+# Log-transform LOS and assign to `t.LOS`
 regdf <- regdf %>% 
-    mutate(t.LOS = sqrt(LOS))
+    mutate(t.LOS = log(LOS))
+```
+
+```{r, eval = FALSE}
+library(fastDummies)
+#df <- regdf %>% dummy_cols(select_columns = race) %>% dummy_cols(select_columns = age)
+#responses = as.matrix(regdf$LOS)
+#predictors = as.matrix(regdf$age, regdf$race, regdf$stage_adm)
+#polym <- polymars(responses, predictors)
+#plot.polymars(polym)
+# Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly. 
 ```
 
 # Fit LOS to linear regression model including all variables -- FULL MODEL
 LOS ~ stage_adm + loc + age + race + ethnicity + sex
 ```{r Linear regression model m1}
 # Fit model
-m1 <- lm(t.LOS ~ stage_adm + loc + poly(age, 2) + race + ethnicity + sex, data = regdf)
+m1 <- lm(t.LOS ~ stage_adm + loc + age + race + ethnicity + sex, 
+         data = regdf)
+# Should we treat age as polynomial? -> poly(age, 2)
 
 # Summarize regression output
 summary(m1)
@@ -94,7 +105,8 @@ model_performance(m1)
 LOS ~ loc + age + race + ethnicity + sex
 ```{r Linear regression model m2}
 # Fit model
-m2 <- lm(t.LOS ~ loc + poly(age, 2) + race + ethnicity + sex, data = regdf)
+m2 <- lm(t.LOS ~ loc + age + race + ethnicity + sex, 
+         data = regdf)
 
 # Summarize regression output
 summary(m2)
@@ -110,7 +122,8 @@ model_performance(m2)
 LOS ~ stage_adm + age + race + ethnicity + sex
 ```{r Linear regression model m3}
 # Fit model
-m3 <- lm(t.LOS ~ stage_adm + poly(age, 2) + race + ethnicity + sex, data = regdf)
+m3 <- lm(t.LOS ~ stage_adm + age + race + ethnicity + sex, 
+         data = regdf)
 
 # Summarize regression output
 summary(m3)
@@ -122,23 +135,129 @@ check_model(m3)
 model_performance(m3)
 ```
 
-# NOTES
+# Fit LOS to linear regression model including only stage_adm, loc, and age
+LOS ~ stage_adm + loc + age 
+```{r Linear regression model m4}
+# Fit model
+m4 <- lm(t.LOS ~ stage_adm + loc + age, 
+         data = regdf)
+# Should we treat age as polynomial? -> poly(age, 2)
 
-    * Compare R^2 for all models. Which has the highest?
-    * What about comparing AIC?
-    * How to deal with age? Treat it as polynomial?
-    * Other methods to consider:
-        * Transform LOS on log, square root, cubic root, or rank scale 
-        * Rank regression
-        * Robust regression
+# Summarize regression output
+summary(m4)
 
+# Check assumptions
+check_model(m4)
 
+# Check performance
+model_performance(m4)
+```
 
+# Univariate regression models 
+Predictors include: stage_adm + loc + age + race + ethnicity + sex
+```{r Univariate regression models}
+# ADMISSION STAGE 
+m.admstage <- lm(t.LOS ~ stage_adm, data = regdf)
 
+  # Summarize regression output
+  summary(m.admstage)
+  
+  # Check assumptions
+  check_model(m.admstage)
+  
+  # Check performance
+  model_performance(m.admstage)
+  
 
+# LOCATION/FACILITY 
+m.loc <- lm(t.LOS ~ loc, data = regdf)
 
+  # Summarize regression output
+  summary(m.loc)
+  
+  # Check assumptions
+  check_model(m.loc)
+  
+  # Check performance
+  model_performance(m.loc)
+ 
 
+# AGE
+m.age <- lm(t.LOS ~ age, data = regdf)
 
+  # Summarize regression output
+  summary(m.age)
+  
+  # Check assumptions
+  check_model(m.age)
+  
+  # Check performance
+  model_performance(m.age) 
+  
 
+# RACE
+m.race <- lm(t.LOS ~ race, data = regdf)
 
+  # Summarize regression output
+  summary(m.race)
+  
+  # Check assumptions
+  check_model(m.race)
+  
+  # Check performance
+  model_performance(m.race)  
+  
+
+# ETHNICITY
+m.ethnicity <- lm(t.LOS ~ ethnicity, data = regdf)
+
+  # Summarize regression output
+  summary(m.ethnicity)
+  
+  # Check assumptions
+  check_model(m.ethnicity)
+  
+  # Check performance
+  model_performance(m.ethnicity)  
+  
+  
+# SEX
+m.sex <- lm(t.LOS ~ sex, data = regdf)
+
+  # Summarize regression output
+  summary(m.sex)
+  
+  # Check assumptions
+  check_model(m.sex)
+  
+  # Check performance
+  model_performance(m.sex)
+
+```
+
+# Results from Univariate Regression Analyses
+
+  * Which variables had a p-value of < 0.2?
+    * Admission stage
+    * Location/facility
+    * Age
+    * Sex
+
+# Important Notes
+
+  * Compare R^2 for all models. Which has the highest?
+  * What about comparing AIC?
+  * How to deal with age? Treat it as polynomial?
+  * Other methods to consider:
+      * Transform LOS on log, square root, cubic root, or rank scale 
+      * Rank regression
+      * Robust regression
+
+# Other Notes from 1/21 Call with Travis (with first attempt at regression)
+  * Decided a-priori that we would include stage of admission, age, and race.
+  * Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly. 
+  * Included age as a polynomial to 2nd degree in regression formula. Tried out poly(age, 3) and poly(age, 4) too, but resulting p-values were less significant. 
+  * Try different transformations of outcome (LOS): Log, square root, cubic root.
+  * Applied mgcv::gam with spline or smooth function (s(age)), which confirmed that we should use age as polynomial.
+  * As of now, undecided on how to treat or parameterize race. Regression results show significance for Race-Other category, and we are not sure why this could be. 
 
