@@ -44,3 +44,6 @@ data/
 # Ignore pdf files generated from knitting Rmd
 *.pdf
 
+# Ignore pdf files generated from knitting Rmd
+*.png
+
