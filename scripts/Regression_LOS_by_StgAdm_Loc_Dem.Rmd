@@ -73,7 +73,7 @@ regdf <- regdf %>%
     mutate(t.LOS = log(LOS))
 ```
 
-```{r, eval = FALSE}
+```{r, eval = FALSE, include = FALSE}
 library(fastDummies)
 #df <- regdf %>% dummy_cols(select_columns = race) %>% dummy_cols(select_columns = age)
 #responses = as.matrix(regdf$LOS)
@@ -151,6 +151,24 @@ check_model(m4)
 
 # Check performance
 model_performance(m4)
+
+# Jtools package 
+summ(m4, robust = T, confint = T, vifs = T)
+
+plot_summs(m4, scale = TRUE)
+
+```
+
+# Compare model coefficients for m1-m4 visually 
+```{r Compare model coefficients visually}
+plot_summs(m1, m2, m3, m4, scale = TRUE)
+```
+
+# Compare regression output for m1-m4
+```{r Compare regression output for m1-m4, results = "asis"}
+export_summs(m1, m2, m3, m4, 
+             scale = TRUE,
+             error_format = "95% CI [{conf.low}, {conf.high}]")
 ```
 
 # Univariate regression models 
