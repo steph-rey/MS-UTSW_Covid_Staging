@@ -1,5 +1,5 @@
 ---
-title: "Linear Regression Analysis -- Can LOS be explained by admission stage, location, and demographics?"
+title: "Linear Regression Analysis: Can LOS be explained by admission stage, location, and demographics?"
 author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
 date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
 output:
@@ -69,9 +69,13 @@ uc <- uc %>%
 regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
   relocate(loc, .after = "ID") 
 
-# Log-transform LOS and assign to `t.LOS`
+# Log-transform LOS and assign to `t.LOS` and ungroup data
 regdf <- regdf %>% 
-    mutate(t.LOS = log(LOS))
+  mutate(t.LOS = log(LOS)) %>% 
+  ungroup()
+
+# Save as .rds
+saveRDS(regdf, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
 ```
 
 ```{r, eval = FALSE, include = FALSE}
