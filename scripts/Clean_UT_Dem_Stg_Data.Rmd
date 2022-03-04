@@ -73,7 +73,8 @@ demog$ethnicity <- fct_collapse(demog$ethnicity,
 
 demog$race <- fct_collapse(demog$race,
                            "Other" = c("Some other race", "American Indian or Alaska Native"),
-                           "Unknown" = c("Unavailable/Unknown", "Declined"))
+                           "Unknown" = c("Unavailable/Unknown", "Declined"),
+                           "Asian" = c("Asian", "Native Hawaiian or Other Pacific Islander"))
 ```
 
 # Merge daily staging and demographics tables, rearrange order of variables, and assign to `df_ut_full`
