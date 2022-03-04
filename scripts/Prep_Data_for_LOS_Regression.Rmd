@@ -1,0 +1,131 @@
+---
+title: "Prepare Data for Length of Stay (LOS) Regression Analysis"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Background
+
+## Project
+
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+
+This script prepares the cleaned datasets for regression analysis -- essentially, ensuring that all variables of of same type and categorical variables like `age`, `race`, and `stage_adm` have same levels. It also transforms `LOS`, the response variable for subsequent regression analysis.
+
+Variables include:
+
+-   `LOS` -\> Length of stay in hospital (in days)
+    -   LOS is not normally distributed and has some extreme outliers, so needs to be transformed before running regression analyses. Use this script to transform LOS on log, square root, cubic root, or rank scale.
+-   `stage_adm` -\> Admission stage categorized into 4 groups: Stage 4, 5, 6, and 7-9.
+    -   Refer to WHO Clinical Progression Scale to decide how to collapse levels (e.g., may also consider categorizing into 3 groups: stage 4, 5-6, and 7-9.)
+-   `age` -\> Age (in years) of patient at admission
+-   `sex` -\> Biological sex of patient (male, female)
+-   `race` -\> Categorized into: Black, White, Asian/Native Hawaiian or Other Pacific Islander, Other, Unknown/Declined)
+-   `ethnicity` -\> Categorized into: Hispanic/Latino, Not Hispanic, Unknown/Declined
+
+## Source Data
+
+-   UTSW: `ut_df_unique_pts.rds`
+-   UCSF: `dm_stg_unique_pt_11.08.21.rds`
+
+# Load required packages
+
+```{r Load required packages, include=F}
+library(tidyverse)
+library(fastDummies) # for dummy variables 
+library(polspline) # for polymars (multivariate polynomial spline regression)
+```
+
+# Import and preview data; keep only relevant variables
+
+```{r Import and preview data}
+# UTSW 
+ut <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_unique_pts.rds") %>% 
+  select(ID, age, sex, race, ethnicity, LOS, stage_adm)
+
+# Round and transform `age` to integer 
+ut$age <- as.integer(round(ut$age))
+
+glimpse(ut)
+
+# UCSF
+uc <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Covid_Staging/data/dm_stg_unique_pt_11.08.21.rds") %>% 
+  select(ID, age, sex, race, ethnicity, LOS, stage_adm)
+
+glimpse(uc)
+```
+
+# Recode levels for `stage_adm` variable
+
+```{r Recode levels for `stage_adm`}
+# Check frequency counts for `stage_adm`
+table(ut$stage_adm)
+table(uc$stage_adm)
+
+# Categorize `stage_adm` into 4 groups: Stage 4, 5, 6, 7-9
+# UTSW 
+ut <- ut %>% mutate(stage_adm = case_when(stage_adm==4 ~ 4,
+                                    stage_adm==5 ~ 5,
+                                    stage_adm==6 ~ 6,
+                                    stage_adm %in% 7:9 ~ 7))
+
+# UCSF
+uc <- uc %>% mutate(stage_adm = case_when(stage_adm==4 ~ 4,
+                                    stage_adm==5 ~ 5,
+                                    stage_adm==6 ~ 6,
+                                    stage_adm %in% 7:9 ~ 7))
+```
+
+# Transform outcome variable `LOS`
+
+```{r Transform `LOS`}
+# Transform `LOS` on log scale and assign to `t.LOS`
+ut$t.LOS <- log(ut$LOS)
+uc$t.LOS <- log(uc$LOS)
+```
+
+# Merge datasets and select only relevant variables for regression analysis
+
+```{r Merge datasets, ungroup, and select relevant vars for regression}
+regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
+  relocate(loc, .after = "ID") %>% 
+    ungroup() %>% 
+    select(-c(ID, LOS))
+
+# Save as .RDS file
+saveRDS(regdf, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
+```
+
+# Create dummy variables for predictors
+
+Used fastDummies::dummy_cols to create dummy columns for predictors:
+
+```{r Create dummy variables for predictors, eval=FALSE}
+
+sample <- regdf %>% dummy_cols(select_columns = c("race", "ethnicity", "age", "sex", "loc"))
+```
+
+# Use polymars for multivariate polynomial spline regression
+
+Used polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model, as the relationship changed as age increased linearly.
+
+```{r Multivariate polynomial spline regression, eval=FALSE}
+# Polspline::polymars(responses, predictors, maxsize, gcv = 4, additive = FALSE, startmodel, weights, no.interact, knots, knot.space = 3, ts.resp, ts.pred, ts.weights, classify, factors, tolerance, verbose = FALSE)
+
+responses = as.matrix(sample$LOS)
+predictors = as.matrix(sample$age, sample$race, sample$stage_adm, sample$ethnicity, sample$loc)
+
+polym <- polymars(responses, predictors)
+
+#plot.polymars(polym)
+```
