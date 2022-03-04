@@ -37,10 +37,9 @@ stage_raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/
 stage <- stage_raw %>% 
   filter(!is.na(ordinal_scale_final)) %>% 
   select(PAT_ENC_CSN_ID_HSP, event_time, ordinal_scale_final, HSP_INITIAL_DATE) %>% 
-  rename(ID = PAT_ENC_CSN_ID_HSP,
-         stage = ordinal_scale_final) %>% 
-  mutate(date = as.Date(event_time),
-         ID = as.character(ID)) %>% 
+  rename(stage = ordinal_scale_final) %>% 
+  mutate(ID = as.character(PAT_ENC_CSN_ID_HSP),
+         date = as.Date(event_time)) %>% 
   group_by(ID, date) %>%
   mutate(stage = max(stage)) %>% 
   distinct(ID, date, stage)
@@ -96,27 +95,19 @@ df_ut_full <- inner_join(stage, demog, by = "ID") %>%
 - stage_disc
 - end_in_death
 ```{r Mutate variables: LOS, max_stage, date_adm, date_disc, stage_adm, stage_disc, end_in_death}
-
+ 
 df_ut_full <- df_ut_full %>% 
     group_by(ID) %>% 
-    mutate(stage = factor(stage,
-                          ordered = TRUE,
-                          levels = c("4", "5", "6", "7", "8", "9", "10")),
-           LOS = as.integer(round(max(date) - min(date), 1)),
-           max_stage = factor(max(stage), 
-                              ordered = TRUE, 
-                              levels = c("4", "5", "6", "7", "8", "9", "10")), 
+    mutate(LOS = as.integer(round(max(date) - min(date), 1)),
+           max_stage = factor(max(stage)), 
            date_adm = min(date),
            date_disc = max(date),
-           stage_adm = factor(stage[date==min(date)],  # Can also use as.integer to transform stage variables to integer type?
-                              ordered = TRUE,
-                              levels = c("4", "5", "6", "7", "8", "9")),
-           stage_disc = factor(stage[date==max(date)], 
-                               ordered = TRUE, 
-                               levels = c("4", "5", "6", "7", "8", "9", "10")),
+           stage_adm = factor(stage[date==min(date)]),
+           stage_disc = factor(stage[date==max(date)]),
            end_in_death = factor(ifelse(max_stage==10, 1, 0))) %>% 
-        filter(LOS>=1)         # Exclude patients where LOS=0
+    filter(LOS>=1)         # Exclude patients where LOS=0
 
+glimpse(df_ut_full)
 ```
 
 # Identify and remove LOS extreme outliers
