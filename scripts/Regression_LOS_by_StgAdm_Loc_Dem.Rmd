@@ -51,6 +51,7 @@ library(polspline) # polymars
 library(jtools) # summarize and plot regression model results 
 ```
 
+
 # Import and preview data
 
 ```{r Import and preview data}
@@ -58,6 +59,8 @@ regdf <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/
 
 # Check structure and preview data 
 str(regdf)
+
+# Import and preview data; keep only relevant variables
 glimpse(regdf)
 ```
 
