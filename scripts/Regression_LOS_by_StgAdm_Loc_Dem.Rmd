@@ -14,82 +14,57 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Background
 
-## Project 
+## Project
+
 MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
 
 ## Description
 
-This script generates multivariate linear regression models to evaluate the extent to which length of stay can be explained by admission stage, location/facility, and demographics (including age, sex, race, and ethnicity). Model parameters include: 
+This script generates multivariate linear regression models to evaluate the extent to which length of stay can be explained by admission stage, location/facility, and demographics (including age, sex, race, and ethnicity). Model parameters include:
 
-  * `LOS` -> Length of stay that patient was hospitalized 
-    - Discharge date - admission date (in days)
-    - LOS is not normally distributed (very long right tail), so most likely needs to be transformed (consider log, square root, cubic root, or rank scale)
-  * `stage_adm` -> Admission stage
-    - Also should consider categorizing admission stage into moderate (stages 4-5) and severe (stages 6+)
-  * `age` -> Age (in years) of patient at admission
-  * `sex` -> Biological sex of patient (male, female)
-  * `race` -> Race categorized into: Black, White, Asian, Hawaiian/Pacific Islander, Other, Unknown/Declined)
-    - Still unsure how to treat `race`
-  * `ethnicity` -> Ethnicity categorized into: Hispanic/Latino, Not Hispanic, Unknown/Declined
+-   `LOS` -\> Length of stay that patient was hospitalized
+    -   Discharge date - admission date (in days)
+    -   LOS is not normally distributed (very long right tail), so most likely needs to be transformed (consider log, square root, cubic root, or rank scale)
+-   `stage_adm` -\> Admission stage
+    -   Also should consider categorizing admission stage into moderate (stages 4-5) and severe (stages 6+)
+-   `age` -\> Age (in years) of patient at admission
+-   `sex` -\> Biological sex of patient (male, female)
+-   `race` -\> Race categorized into: Black, White, Asian, Hawaiian/Pacific Islander, Other, Unknown/Declined)
+    -   Still unsure how to treat `race`
+-   `ethnicity` -\> Ethnicity categorized into: Hispanic/Latino, Not Hispanic, Unknown/Declined
 
-Each model is checked to meet the assumptions of linear regression and evaluated by its performance relative to other models. 
+Each model is checked to meet the assumptions of linear regression and evaluated by its performance relative to other models.
 
 ## Source Data
 
-  * UTSW: `ut_df_unique_pts.rds`
-  * UCSF:  `dm_stg_unique_pt_11.08.21.rds`
+-   UTSW: `ut_df_unique_pts.rds`
+-   UCSF: `dm_stg_unique_pt_11.08.21.rds`
 
 # Load required packages
+
 ```{r Load required packages, include=F}
 library(tidyverse)
 library(tidymodels)
 library(performance) # check model assumptions and performance
 library(vip) # calculate and visualize feature importance
-library(polspline)
+library(polspline) # polymars 
 library(jtools) # summarize and plot regression model results 
 ```
 
-# Import and preview data; keep only relevant variables
+# Import and preview data
+
 ```{r Import and preview data}
-ut <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_unique_pts.rds") %>% 
-  select(ID, age, sex, race, ethnicity, LOS, max_stage, stage_adm)
+regdf <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
 
-uc <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Covid_Staging/data/dm_stg_unique_pt_11.08.21.rds") %>% 
-  select(ID, age, sex, race, ethnicity, LOS, max_stage, stage_adm)
-```
-
-# Merge datasets, keep only relevant variables, and create variable for transformed outcome (LOS)
-```{r Merge datasets, select relevant variables for regression analysis, and create t.LOS var}
-# Since max_stage and stage_adm are coded as ordinal vars for UT, need to do the same for UC 
-uc <- uc %>%
-  mutate(max_stage = factor(max_stage, ordered = TRUE, levels = c("4", "5", "6", "7", "8", "9", "10")), 
-         stage_adm = factor(stage_adm, ordered = TRUE, levels = c("4", "5", "6", "7", "8", "9")))
-
-# Merge datasets and select relevant vars for regression analysis 
-regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
-  relocate(loc, .after = "ID") 
-
-# Log-transform LOS and assign to `t.LOS` and ungroup data
-regdf <- regdf %>% 
-  mutate(t.LOS = log(LOS)) %>% 
-  ungroup()
-
-# Save as .rds
-saveRDS(regdf, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
-```
-
-```{r, eval = FALSE, include = FALSE}
-library(fastDummies)
-#df <- regdf %>% dummy_cols(select_columns = race) %>% dummy_cols(select_columns = age)
-#responses = as.matrix(regdf$LOS)
-#predictors = as.matrix(regdf$age, regdf$race, regdf$stage_adm)
-#polym <- polymars(responses, predictors)
-#plot.polymars(polym)
-# Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly. 
+# Check structure and preview data 
+str(regdf)
+glimpse(regdf)
 ```
 
 # Fit LOS to linear regression model including all variables -- FULL MODEL
-LOS ~ stage_adm + loc + age + race + ethnicity + sex
+
+LOS \~ stage_adm + loc + age + race + ethnicity + sex
+
 ```{r Linear regression model m1}
 # Fit model
 m1 <- lm(t.LOS ~ stage_adm + loc + age + race + ethnicity + sex, 
@@ -106,8 +81,10 @@ check_model(m1)
 model_performance(m1)
 ```
 
-# Fit LOS to linear regression model including all variables except for stage_adm 
-LOS ~ loc + age + race + ethnicity + sex
+# Fit LOS to linear regression model including all variables except for stage_adm
+
+LOS \~ loc + age + race + ethnicity + sex
+
 ```{r Linear regression model m2}
 # Fit model
 m2 <- lm(t.LOS ~ loc + age + race + ethnicity + sex, 
@@ -124,7 +101,9 @@ model_performance(m2)
 ```
 
 # Fit LOS to linear regression model including all variables except for loc
-LOS ~ stage_adm + age + race + ethnicity + sex
+
+LOS \~ stage_adm + age + race + ethnicity + sex
+
 ```{r Linear regression model m3}
 # Fit model
 m3 <- lm(t.LOS ~ stage_adm + age + race + ethnicity + sex, 
@@ -141,7 +120,9 @@ model_performance(m3)
 ```
 
 # Fit LOS to linear regression model including only stage_adm, loc, and age
-LOS ~ stage_adm + loc + age 
+
+LOS \~ stage_adm + loc + age
+
 ```{r Linear regression model m4}
 # Fit model
 m4 <- lm(t.LOS ~ stage_adm + loc + age, 
@@ -164,20 +145,24 @@ plot_summs(m4, scale = TRUE)
 
 ```
 
-# Compare model coefficients for m1-m4 visually 
+# Compare model coefficients for m1-m4 visually
+
 ```{r Compare model coefficients visually}
 plot_summs(m1, m2, m3, m4, scale = TRUE)
 ```
 
 # Compare regression output for m1-m4
+
 ```{r Compare regression output for m1-m4, results = "asis"}
 export_summs(m1, m2, m3, m4, 
              scale = TRUE,
              error_format = "95% CI [{conf.low}, {conf.high}]")
 ```
 
-# Univariate regression models 
+# Univariate regression models
+
 Predictors include: stage_adm + loc + age + race + ethnicity + sex
+
 ```{r Univariate regression models}
 # ADMISSION STAGE 
 m.admstage <- lm(t.LOS ~ stage_adm, data = regdf)
@@ -260,27 +245,27 @@ m.sex <- lm(t.LOS ~ sex, data = regdf)
 
 # Results from Univariate Regression Analyses
 
-  * Which variables had a p-value of < 0.2?
-    * Admission stage
-    * Location/facility
-    * Age
-    * Sex
+-   Which variables had a p-value of \< 0.2?
+    -   Admission stage
+    -   Location/facility
+    -   Age
+    -   Sex
 
 # Important Notes
 
-  * Compare R^2 for all models. Which has the highest?
-  * What about comparing AIC?
-  * How to deal with age? Treat it as polynomial?
-  * Other methods to consider:
-      * Transform LOS on log, square root, cubic root, or rank scale 
-      * Rank regression
-      * Robust regression
+-   Compare R\^2 for all models. Which has the highest?
+-   What about comparing AIC?
+-   How to deal with age? Treat it as polynomial?
+-   Other methods to consider:
+    -   Transform LOS on log, square root, cubic root, or rank scale
+    -   Rank regression
+    -   Robust regression
 
 # Other Notes from 1/21 Call with Travis (with first attempt at regression)
-  * Decided a-priori that we would include stage of admission, age, and race.
-  * Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly. 
-  * Included age as a polynomial to 2nd degree in regression formula. Tried out poly(age, 3) and poly(age, 4) too, but resulting p-values were less significant. 
-  * Try different transformations of outcome (LOS): Log, square root, cubic root.
-  * Applied mgcv::gam with spline or smooth function (s(age)), which confirmed that we should use age as polynomial.
-  * As of now, undecided on how to treat or parameterize race. Regression results show significance for Race-Other category, and we are not sure why this could be. 
 
+-   Decided a-priori that we would include stage of admission, age, and race.
+-   Used fastDummies::dummy_cols to create dummy columns for race and age, then use polspline::polymars(y,x) to identify which parameters were most important. Confirmed that we should include admission stage, age, and race as predictors. It also showed us that we need to include age as a non-linear in our model - relationship changed as age increased linearly.
+-   Included age as a polynomial to 2nd degree in regression formula. Tried out poly(age, 3) and poly(age, 4) too, but resulting p-values were less significant.
+-   Try different transformations of outcome (LOS): Log, square root, cubic root.
+-   Applied mgcv::gam with spline or smooth function (s(age)), which confirmed that we should use age as polynomial.
+-   As of now, undecided on how to treat or parameterize race. Regression results show significance for Race-Other category, and we are not sure why this could be.
