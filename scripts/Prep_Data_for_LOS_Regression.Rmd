@@ -112,7 +112,7 @@ Used fastDummies::dummy_cols to create dummy columns for predictors:
 
 ```{r Create dummy variables for predictors, eval=FALSE}
 
-sample <- regdf %>% dummy_cols(select_columns = c("race", "ethnicity", "age", "sex", "loc"))
+sample <- regdf %>% fastDummies::dummy_cols(select_columns = c("race", "ethnicity", "age", "sex", "loc"))
 ```
 
 # Use polymars for multivariate polynomial spline regression
@@ -122,10 +122,12 @@ Used polspline::polymars(y,x) to identify which parameters were most important. 
 ```{r Multivariate polynomial spline regression, eval=FALSE}
 # Polspline::polymars(responses, predictors, maxsize, gcv = 4, additive = FALSE, startmodel, weights, no.interact, knots, knot.space = 3, ts.resp, ts.pred, ts.weights, classify, factors, tolerance, verbose = FALSE)
 
-responses = as.matrix(sample$LOS)
-predictors = as.matrix(sample$age, sample$race, sample$stage_adm, sample$ethnicity, sample$loc)
+responses = as.matrix(regdf$t.LOS)
+predictors = as.matrix(regdf$age, regdf$race, regdf$stage_adm, regdf$ethnicity, regdf$loc, regdf$sex)
 
-polym <- polymars(responses, predictors)
+pm <- polymars(responses, predictors)
 
-#plot.polymars(polym)
+summary.polymars(pm)
+
+plot.polymars(pm, predictor1 = 1)
 ```
