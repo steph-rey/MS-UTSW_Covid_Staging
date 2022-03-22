@@ -116,13 +116,14 @@ ut$t.LOS <- log(ut$LOS)
 uc$t.LOS <- log(uc$LOS)
 ```
 
-# Merge datasets and select only relevant variables for regression analysis
+# Merge datasets 
 
-```{r Merge datasets, ungroup, and select relevant vars for regression}
+```{r Merge datasets and ungroup}
+# Merge datasets and ungroup 
 regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
   relocate(loc, .after = "ID") %>% 
     ungroup() %>% 
-    select(-c(ID, LOS))
+    select(-c(ID, LOS, stage_adm))
 
 # Save as .RDS file
 saveRDS(regdf, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
