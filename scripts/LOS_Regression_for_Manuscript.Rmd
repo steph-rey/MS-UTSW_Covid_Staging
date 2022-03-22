@@ -24,7 +24,7 @@ MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and
 
 1.  Prepare the cleaned UTSW and UCSF datasets for analysis
 
-    -   Recode levels for `stage_adm` - see 'variable' section for details
+    -   Recode levels for `stage_adm_cat` - see 'variable' section for details
 
     -   Transform outcome variable `LOS` on log scale
 
@@ -36,7 +36,7 @@ MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and
 
 4.  Fit linear models using `age` as-is, age as a quadratic term, and age as a semi-parametric term and compare output
 
-5.  Fit linear models with and w/o interaction term between `stage_adm` and `age` and compare output
+5.  Fit linear models with and w/o interaction term between `stage_adm_cat` and `age` and compare output
 
     -   Use Bayesian Model Averaging to account for variable selection
 
@@ -46,7 +46,7 @@ MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and
 
 -   `LOS` -\> Length of stay in hospital (in days)
     -   LOS is not normally distributed and has some extreme outliers, so needs to be transformed before running regression analyses. Use this script to transform LOS on log, square root, cubic root, or rank scale.
--   `stage_adm` -\> Admission stage categorized into 4 groups: Stage 4, 5, 6, and 7-9.
+-   `stage_adm_cat` -\> Admission stage categorized into 4 groups: Stage 4, 5, 6, and 7-9.
     -   Refer to WHO Clinical Progression Scale to decide how to collapse levels (e.g., may also consider categorizing into 3 groups: stage 4, 5-6, and 7-9.)
 -   `age` -\> Age (in years) of patient at admission
 -   `sex` -\> Biological sex of patient (male, female)
@@ -87,7 +87,7 @@ uc <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Covid_Staging/data/dm_stg_u
 glimpse(uc)
 ```
 
-# Recode levels for `stage_adm` variable
+# Recode levels for `stage_adm` variable and reassign as `stage_adm_cat`
 
 ```{r Recode levels for `stage_adm`}
 # Check frequency counts for `stage_adm`
@@ -96,19 +96,19 @@ table(uc$stage_adm)
 
 # Categorize `stage_adm` into 4 groups: Stage 4, 5, 6, 7-9
 # UTSW 
-ut <- ut %>% mutate(stage_adm = case_when(stage_adm==4 ~ 4,
+ut <- ut %>% mutate(stage_adm_cat = case_when(stage_adm==4 ~ 4,
                                     stage_adm==5 ~ 5,
                                     stage_adm==6 ~ 6,
                                     stage_adm %in% 7:9 ~ 7))
 
 # UCSF
-uc <- uc %>% mutate(stage_adm = case_when(stage_adm==4 ~ 4,
+uc <- uc %>% mutate(stage_adm_cat = case_when(stage_adm==4 ~ 4,
                                     stage_adm==5 ~ 5,
                                     stage_adm==6 ~ 6,
                                     stage_adm %in% 7:9 ~ 7))
 ```
 
-# Transform outcome variable `LOS`
+# Transform response variable `LOS`
 
 ```{r Transform `LOS`}
 # Transform `LOS` on log scale and assign to `t.LOS`
@@ -150,15 +150,15 @@ ethnicity_names
 responses = as.matrix(regdf$t.LOS)
 
 # Create vector of predictor names
-    # For vars with >2 categories (race, ethnicity), we can remove one of the columns
-pred.names <- c("age", race_names[-1], "stage_adm", ethnicity_names[-1], "loc_UTSW", "sex_Male")
+    # For vars with >2 categories (e.g., race, ethnicity), we can remove one of the columns in the analysis -- this is what the [-1] refers to
+pred.names <- c("age", race_names[-1], "stage_adm_cat", ethnicity_names[-1], "loc_UTSW", "sex_Male")
 pred.names
 
 # Create matrix of predictors and assign to `predictors`
 predictors = as.matrix(regdf[,pred.names])
 
 # Run polymars 
-pm <- polymars(responses, predictors)
+pm <- polspline::polymars(responses, predictors)
 
 # Summarize and interpret polymars output 
 summary.polymars(pm)
@@ -167,21 +167,35 @@ summary.polymars(pm)
 # knot at age 73 - may need to consider  non-linear effect of age 
 ```
 
-**Interpretation:** Used polspline::polymars(prdictors, responses) to identify which parameters were most influential. It confirmed that we should include stage at admission (`stage_adm`), age (`age`), and location (`loc`) as predictors, and should consider including age as a non-linear - perhaps quadratic - variable in our model, given the knot at age 73. It also suggested that there is an interaction between age and stage at admission.
+**Interpretation:** Used polspline::polymars(predictors, responses) to identify which parameters were most influential. It confirmed that we should include stage at admission (`stage_adm_cat`), age (`age`), and location (`loc`) as predictors, and should consider including age as a non-linear - perhaps quadratic - variable in our model, given the knot at age 73. It also suggested that there is an interaction between age and stage at admission.
+
+**Further Details:**
+
+-   Row 1 -- Intercept (aka pred0)
+
+-   Row 2 -- pred6 (stage_adm_cat)
+
+-   Row 3 -- pred1 (age)
+
+-   Row 4 -- pred9 (loc_UTSW)
+
+-   Row 5 -- Interaction btw pred1 (age) and pred6 (stage_adm_cat)
+
+-   Row 6 -- pred1 (age) with knot at age 73, should consider age as non-linear or quadratic variable in model
 
 # Fit models considering age as-is, age as a quadratic term, and age as a semi-parametric term, then compare
 
 ```{r Model with non-transformed age, age as polynomial, and age as smooth term}
 # Model with non-transformed age
-m0 <- lm(t.LOS ~ stage_adm + loc + age, data = regdf)
+m0 <- lm(t.LOS ~ stage_adm_cat + loc + age, data = regdf)
 summary(m0)
 
 # Model with age as polynomial of 2nd degree (quadratic)
-m1 <- lm(t.LOS ~ stage_adm + loc + poly(age,2), data = regdf)
+m1 <- lm(t.LOS ~ stage_adm_cat + loc + poly(age,2), data = regdf)
 summary(m1)
 
 # Model with age as smooth term (semi-parametric)
-m2 <- mgcv::gam(t.LOS ~ stage_adm + loc + s(age), data = regdf)
+m2 <- mgcv::gam(t.LOS ~ stage_adm_cat + loc + s(age), data = regdf)
 summary(m2)
 
 # Compare models 
@@ -194,11 +208,11 @@ anova(m0, m1, m2)
 
 ```{r Compare models with and w/o interaction term}
 # Model with age as polynomial of 2nd degree and interaction term btw stage_adm and age (stage_adm:age)
-m3 <- lm(t.LOS ~ stage_adm + loc + poly(age,2) + stage_adm:age, data = regdf)
+m3 <- lm(t.LOS ~ stage_adm_cat + loc + poly(age,2) + stage_adm_cat:age, data = regdf)
 summary(m3)
 
 # BMA::bic.glm 
-summary(BMA::bic.glm(t.LOS ~ stage_adm + loc + poly(age,2) + stage_adm:age, data = regdf, glm.family = "gaussian"))
+summary(BMA::bic.glm(t.LOS ~ stage_adm_cat + loc + poly(age,2) + stage_adm_cat:age, data = regdf, glm.family = "gaussian"))
 
 # Compare quadratic models with and without interaction term
 anova(m1, m3)
@@ -217,7 +231,7 @@ m.age <- lm(t.LOS ~ poly(age,2), data = regdf)
 summary(m.age)
 
 # Stage at admission
-m.stage_adm <- lm(t.LOS ~ stage_adm, data = regdf)
+m.stage_adm <- lm(t.LOS ~ stage_adm_cat, data = regdf)
 summary(m.stage_adm)
 
 # Location (facility)
@@ -225,11 +239,11 @@ m.loc <- lm(t.LOS ~ loc, data = regdf)
 summary(m.loc)
 
 # Interaction between stage at admission and age 
-m.interx <- lm(t.LOS ~ stage_adm:age, data = regdf)
+m.interx <- lm(t.LOS ~ stage_adm_cat:age, data = regdf)
 summary(m.interx)
 
 # Interaction between stage at admission and age as quadratic 
-m.interx.polyage <- lm(t.LOS ~ stage_adm:poly(age,2), data = regdf)
+m.interx.polyage <- lm(t.LOS ~ stage_adm_cat:poly(age,2), data = regdf)
 summary(m.interx.polyage)
 ```
 
