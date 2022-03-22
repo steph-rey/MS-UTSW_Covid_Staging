@@ -1,0 +1,275 @@
+---
+title: "Length of Stay (LOS) Regression Analysis - Outliers Removed"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Background
+
+## Project
+
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Methodology
+
+**This script:**
+
+1.  Prepare the cleaned UTSW and UCSF datasets for analysis
+
+    -   Recode levels for `stage_adm_cat` - see 'variable' section for details
+
+    -   Transform outcome variable `LOS` on log scale
+
+    -   Merge UTSW and UCSF dataset and select only relevant variables for analysis
+    
+    -   Identify and remove LOS extreme outliers 
+
+2.  Create dummy variables for non-numeric predictors
+
+3.  Run multivariate adaptive polynomial spline regression using polspline::polymars to aid with model selection
+
+4.  Fit linear models using `age` as-is, age as a quadratic term, and age as a semi-parametric term and compare output
+
+5.  Fit linear models with and w/o interaction term between `stage_adm_cat` and `age` and compare output
+
+    -   Use Bayesian Model Averaging to account for variable selection
+
+6.  Run univariate analyses on significant predictors
+
+**Variables include:**
+
+-   `LOS` -\> Length of stay in hospital (in days)
+    -   LOS is not normally distributed and has some extreme outliers, so needs to be transformed before running regression analyses. Use this script to transform LOS on log, square root, cubic root, or rank scale.
+-   `stage_adm_cat` -\> Admission stage categorized into 4 groups: Stage 4, 5, 6, and 7-9.
+    -   Refer to WHO Clinical Progression Scale to decide how to collapse levels (e.g., may also consider categorizing into 3 groups: stage 4, 5-6, and 7-9.)
+-   `age` -\> Age (in years) of patient at admission
+-   `sex` -\> Biological sex of patient (male, female)
+-   `race` -\> Categorized into: Black, White, Asian/Native Hawaiian or Other Pacific Islander, Other, Unknown/Declined)
+-   `ethnicity` -\> Categorized into: Hispanic/Latino, Not Hispanic, Unknown/Declined
+
+## Source Data
+
+-   **UTSW:** `ut_df_unique_pts.rds`
+-   **UCSF:** `dm_stg_unique_pt_11.08.21.rds`
+
+# Load required packages
+
+```{r Load required packages, include=F}
+library(tidyverse)
+library(fastDummies) # for dummy variables 
+library(polspline) # for polymars (multivariate polynomial spline regression)
+library(mgcv) # for generalized additive modelling (gam) using a smooth function of predictor
+library(BMA) # for bic.glm (Bayesian model averaging for generalized linear models)
+```
+
+# Import and preview data; keep only relevant variables
+
+```{r Import and preview data}
+# UTSW 
+ut <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/ut_df_unique_pts.rds") %>% 
+  select(ID, age, sex, race, ethnicity, LOS, stage_adm)
+
+# Round and transform `age` to integer 
+ut$age <- as.integer(round(ut$age))
+
+glimpse(ut)
+
+# UCSF
+uc <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Covid_Staging/data/dm_stg_unique_pt_11.08.21.rds") %>% 
+  select(ID, age, sex, race, ethnicity, LOS, stage_adm)
+
+glimpse(uc)
+```
+
+# Recode levels for `stage_adm` variable and reassign as `stage_adm_cat`
+
+```{r Recode levels for `stage_adm`}
+# Check frequency counts for `stage_adm`
+table(ut$stage_adm)
+table(uc$stage_adm)
+
+# Categorize `stage_adm` into 4 groups: Stage 4, 5, 6, 7-9
+# UTSW 
+ut <- ut %>% mutate(stage_adm_cat = case_when(stage_adm==4 ~ 4,
+                                    stage_adm==5 ~ 5,
+                                    stage_adm==6 ~ 6,
+                                    stage_adm %in% 7:9 ~ 7))
+
+# UCSF
+uc <- uc %>% mutate(stage_adm_cat = case_when(stage_adm==4 ~ 4,
+                                    stage_adm==5 ~ 5,
+                                    stage_adm==6 ~ 6,
+                                    stage_adm %in% 7:9 ~ 7))
+```
+
+# Transform response variable `LOS`
+
+```{r Transform `LOS`}
+# Transform `LOS` on log scale and assign to `t.LOS`
+ut$t.LOS <- log(ut$LOS)
+uc$t.LOS <- log(uc$LOS)
+```
+
+# Merge datasets and remove LOS extreme outliers 
+
+```{r Merge datasets and remove LOS extreme outliers}
+# Merge datasets and ungroup 
+regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
+  relocate(loc, .after = "ID") %>% 
+    ungroup() 
+
+# Identify extreme LOS outliers
+quantile(regdf$LOS, probs = seq(0, 1, .05))
+quantile(regdf$LOS, probs = seq(0, 1, .01)) # this shows 78 as 99th percentile
+
+# Remove outliers
+regdf <- subset(regdf, regdf$LOS<=78)
+
+# Save as .RDS file
+# saveRDS(regdf, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
+```
+
+# Create dummy variables for non-numeric predictors
+
+```{r Create dummy variables}
+# Create dummy columns for race, ethnicity, sex, and location
+regdf <- regdf %>% fastDummies::dummy_cols(select_columns = c("race", "ethnicity", "sex", "loc"))
+
+# Gather all col names that start with "race_" and assign to `race_names`
+race_names <- names(regdf)[grepl("race_", names(regdf))]
+race_names
+
+# Gather all col names that start with "ethnicity_" and assign to `ethnicity_names`
+ethnicity_names <- names(regdf)[grepl("ethnicity_", names(regdf))]
+ethnicity_names
+```
+
+# Run multivariate adaptive polynomial spline regression (polymars) to help with model selection
+
+```{r Multivariate polynomial spline regression}
+# Create matrix of transformed LOS and assign to `responses`
+responses = as.matrix(regdf$t.LOS)
+
+# Create vector of predictor names
+    # For vars with >2 categories (e.g., race, ethnicity), we can remove one of the columns in the analysis -- this is what the [-1] refers to
+pred.names <- c("age", race_names[-1], "stage_adm_cat", ethnicity_names[-1], "loc_UTSW", "sex_Male")
+pred.names
+
+# Create matrix of predictors and assign to `predictors`
+predictors = as.matrix(regdf[,pred.names])
+
+# Run polymars 
+pm <- polspline::polymars(responses, predictors)
+
+# Summarize and interpret polymars output 
+summary.polymars(pm)
+
+# may be an intx btw age and stage 
+# knot at age 73 - may need to consider  non-linear effect of age 
+```
+
+**Interpretation:** Used polspline::polymars(predictors, responses) to identify which parameters were most influential. It confirmed that we should include stage at admission (`stage_adm_cat`), age (`age`), and location (`loc`) as predictors, and should consider including age as a non-linear - perhaps quadratic - variable in our model, given the knot at age 73. It also suggested that there is an interaction between age and stage at admission.
+
+**Further Details:**
+
+-   Row 1 -- Intercept (aka pred0)
+
+-   Row 2 -- pred6 (stage_adm_cat)
+
+-   Row 3 -- pred1 (age)
+
+-   Row 4 -- pred9 (loc_UTSW)
+
+-   Row 5 -- Interaction btw pred1 (age) and pred6 (stage_adm_cat)
+
+-   Row 6 -- pred1 (age) with knot at age 73, should consider age as non-linear or quadratic variable in model
+
+# Fit models considering age as-is, age as a quadratic term, and age as a semi-parametric term, then compare
+
+```{r Model with non-transformed age, age as polynomial, and age as smooth term}
+# Model with non-transformed age
+m0 <- lm(t.LOS ~ stage_adm_cat + loc + age, data = regdf)
+summary(m0)
+
+# Model with age as polynomial of 2nd degree (quadratic)
+m1 <- lm(t.LOS ~ stage_adm_cat + loc + poly(age,2), data = regdf)
+summary(m1)
+
+# Model with age as smooth term (semi-parametric)
+m2 <- mgcv::gam(t.LOS ~ stage_adm_cat + loc + s(age), data = regdf)
+summary(m2)
+
+# Compare models 
+anova(m0, m1, m2)
+```
+
+**Interpretation:** From output, we can see that the semi-parametric model fits a little better than the quadratic model (age as poly 2nd deg), but the complexity may not be worth it. Let's stick with the quadratic model and then explore the potential interaction between stage at admission and age.
+
+# Compare models with and w/o interaction term between stage at admission and age
+
+```{r Compare models with and w/o interaction term}
+# Model with age as polynomial of 2nd degree and interaction term btw stage_adm and age (stage_adm:age)
+m3 <- lm(t.LOS ~ stage_adm_cat + loc + poly(age,2) + stage_adm_cat:age, data = regdf)
+summary(m3)
+
+# BMA::bic.glm 
+summary(BMA::bic.glm(t.LOS ~ stage_adm_cat + loc + poly(age,2) + stage_adm_cat:age, data = regdf, glm.family = "gaussian"))
+
+# Compare quadratic models with and without interaction term
+anova(m1, m3)
+
+# Calculate difference in adj R^2 btw model with and without interaction term 
+summary(m3)$adj.r.squared - summary(m1)$adj.r.squared
+```
+
+**Interpretation:** From output, we can see that the interaction term was found to be significant, so we should include that in our final model. The difference in adj R\^2 was 0.0079.
+
+# Run univariate analyses
+
+```{r Run univariate analyses}
+# Age (polynomial 2nd deg)
+m.age <- lm(t.LOS ~ poly(age,2), data = regdf)
+summary(m.age)
+
+# Stage at admission
+m.stage_adm <- lm(t.LOS ~ stage_adm_cat, data = regdf)
+summary(m.stage_adm)
+
+# Location (facility)
+m.loc <- lm(t.LOS ~ loc, data = regdf)
+summary(m.loc)
+
+# Interaction between stage at admission and age 
+m.interx <- lm(t.LOS ~ stage_adm_cat:age, data = regdf)
+summary(m.interx)
+
+# Interaction between stage at admission and age as quadratic 
+m.interx.polyage <- lm(t.LOS ~ stage_adm_cat:poly(age,2), data = regdf)
+summary(m.interx.polyage)
+```
+
+# Next Steps
+
+-   Create Table 2 and include **univariate** and **multivariate analysis** (see above)
+-   **Leave-one-out** to assess influence of interaction term
+    -   Steph not sure how to do this \^
+
+# Notes
+
+Since we ran polymars beforehand to help with model selection, we cannot use the p-values from the regression output. We need to report the true p-values and correct for model selection via one of the following methods:
+
+-   Bootstrapped AIC
+
+-   **Bayesian modeling** (see above)
+
+-   Multi-carving(?)
+
+    -   Novel approach, but complex
