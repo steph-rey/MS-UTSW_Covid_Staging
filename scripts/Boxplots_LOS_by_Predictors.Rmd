@@ -1,0 +1,212 @@
+---
+title: "Comparing LOS by Race, Ethnicity, Sex, Location, Severity on Admission, and Age"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Load required packages
+
+```{r Load required packages, include=F}
+library(tidyverse)
+```
+
+# Read in data
+
+```{r}
+df <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
+```
+
+# Length of Stay by Race
+
+```{r Race}
+# Boxplot
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>%
+ ggplot() +
+ aes(x = race, y = LOS, fill = race) +
+ geom_boxplot(shape = "circle") +
+ scale_fill_hue(direction = 1) +
+ labs(x = "Race", y = "Length of Stay (days)", title = "LOS by Race", fill = "Race Category") +
+ coord_flip() +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+
+# Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>% 
+ ggplot(aes(x = LOS, color = race)) +
+ geom_density(bins = 30, position = "identity") +
+ labs(title = "LOS by Race", x = "Length of Stay (days)", y = "Density", color = "Race") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+```
+
+# Length of Stay by Ethnicity
+
+```{r Ethnicity}
+# Boxplot
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>%
+ ggplot() +
+ aes(x = ethnicity, y = LOS, fill = ethnicity) +
+ geom_boxplot(shape = "circle") +
+ scale_fill_hue(direction = 1) +
+ labs(x = "Ethnicity", y = "Length of Stay (days)", title = "LOS by Ethnicity", fill = "Ethnicity") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+
+# Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>% 
+ ggplot(aes(x = LOS, color = ethnicity)) +
+ geom_density(bins = 30, position = "identity") +
+ labs(title = "LOS by Ethnicity", x = "Length of Stay (days)", y = "Density", color = "Ethnicity") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+```
+
+# Length of Stay by Sex
+
+```{r Sex}
+# Boxplot
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>%
+ ggplot() +
+ aes(x = sex, y = LOS, fill = sex) +
+ geom_boxplot(shape = "circle") +
+ scale_fill_hue(direction = 1) +
+ labs(x = "Sex", y = "Length of Stay (days)", title = "LOS by Sex", fill = "Sex") +
+ coord_flip() +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+
+# Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>% 
+ ggplot(aes(x = LOS, color = sex)) +
+ geom_density(bins = 30, position = "identity") +
+ labs(title = "LOS by Sex", x = "Length of Stay (days)", y = "Density", color = "Sex") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+```
+
+# Length of Stay by Location / Facility
+
+```{r Location}
+# Boxplot
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>%
+ ggplot() +
+ aes(x = loc, y = LOS, fill = loc) +
+ geom_boxplot(shape = "circle") +
+ scale_fill_hue(direction = 1) +
+ labs(x = "Location / Facility", y = "Length of Stay (days)", title = "LOS by Location", fill = "Location / Facility") +
+ coord_flip() +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+
+# Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>% 
+ ggplot(aes(x = LOS, color = loc)) +
+ geom_density(bins = 30, position = "identity") +
+ labs(title = "LOS by Location", x = "Length of Stay (days)", y = "Density", color = "Location") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+```
+
+# Length of Stay by Admission Severity
+
+```{r Admission Severity}
+# Group by stage at admission then summarize mean and median LOS 
+df %>% 
+    group_by(stage_adm_cat) %>% 
+    summarize(mean(LOS),
+              mean(t.LOS),
+              median(LOS))
+
+# Faceted Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>%
+ ggplot() +
+ aes(x = LOS) +
+ geom_histogram(bins = 20L, fill = "#FF8C00") +
+ labs(x = "Severity at admission", 
+ y = "Length of Stay (days)", title = "LOS by Admission Stage", caption = "Admission stage categorized into: 4, 5, 6, 7-9") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5), plot.caption = element_text(face = "italic", 
+ hjust = 0)) +
+ facet_wrap(vars(stage_adm_cat), scales = "free") +
+ xlim(0, 60)
+
+# Overlaid Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>% 
+ ggplot(aes(x = LOS, color = as.factor(stage_adm_cat), fill = as.factor(stage_adm_cat))) +
+ geom_density(bins = 30, position = "identity", alpha = 0.2) +
+ labs(title = "LOS by Admission Severity", x = "Length of Stay (days)", y = "Density", color = "Admission Severity", fill = "Admission Severity") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+
+# Boxplot
+df %>%
+ filter(LOS >= 0L & LOS <= 85L) %>%
+ ggplot() +
+ aes(x = "", y = LOS, fill = stage_adm_cat, group = stage_adm_cat) +
+ geom_boxplot(shape = "circle") +
+ scale_fill_distiller(palette = "RdYlBu", direction = 1) +
+ labs(x = "Admission Stage Category", y = "Length of Stay (days)", 
+ title = "LOS by Admission Severity", subtitle = "Admission stage categorized into: 4, 5, 6, 7-9", 
+ fill = "Admission Severity") +
+ coord_flip() +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, 
+ face = "bold", hjust = 0.5), plot.subtitle = element_text(size = 15L, face = "italic", hjust = 0.5))
+```
+
+# Length of Stay by Age
+
+```{r Age}
+# Create bins for age; reassign to variable `agegrp`
+df$agegrp <- findInterval(df$age, c(15, 30, 45, 60, 75, 90))
+# hist(df$agegrp)
+
+# Group by age then summarize mean and median LOS 
+df %>% 
+    group_by(agegrp) %>% 
+    summarize(mean(LOS),
+              mean(t.LOS),
+              median(LOS))
+
+# Boxplot
+df %>%
+ filter(LOS >= 0L & LOS <= 85L) %>%
+ ggplot() +
+ aes(x = "", y = LOS, fill = agegrp, group = agegrp) +
+ geom_boxplot(shape = "circle") +
+ scale_fill_distiller(palette = "RdYlBu", 
+ direction = 1) +
+ labs(x = "Age", y = "Length of Stay (days)", title = "LOS by Age", subtitle = "Group 1: 15-30, Group 2: 30-45, Group 3: 45-60, Group 4: 60-75, Group 5: 75-90, Group 6: 90-105", 
+ fill = "Age Group") +
+ coord_flip() +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, 
+ face = "bold", hjust = 0.5), plot.subtitle = element_text(size = 15L, face = "italic", hjust = 0.5))
+
+# Overlaid Histogram
+df %>%
+ filter(LOS >= 0L & LOS <= 80L) %>% 
+ ggplot(aes(x = LOS, color = as.factor(agegrp), fill = as.factor(agegrp))) +
+ geom_density(bins = 30, position = "identity", alpha = 0.3) +
+ labs(title = "LOS by Age", x = "Length of Stay (days)", y = "Density", color = "Age", fill = "Age") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 21L, face = "bold", hjust = 0.5))
+```
