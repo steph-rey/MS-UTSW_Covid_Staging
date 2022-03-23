@@ -108,22 +108,15 @@ uc <- uc %>% mutate(stage_adm_cat = case_when(stage_adm==4 ~ 4,
                                     stage_adm %in% 7:9 ~ 7))
 ```
 
-# Transform response variable `LOS`
+# Merge datasets and create new variable for log-transformed LOS 
 
-```{r Transform `LOS`}
-# Transform `LOS` on log scale and assign to `t.LOS`
-ut$t.LOS <- log(ut$LOS)
-uc$t.LOS <- log(uc$LOS)
-```
-
-# Merge datasets 
-
-```{r Merge datasets and ungroup}
+```{r Merge datasets and create var for log-transformed LOS}
 # Merge datasets and ungroup 
 regdf <- bind_rows("UTSW" = ut, "UCSF" = uc, .id = "loc") %>% 
-  relocate(loc, .after = "ID") %>% 
-    ungroup() %>% 
-    select(-c(ID, LOS, stage_adm))
+    relocate(loc, .after = "ID") %>% 
+    ungroup() %>%
+    mutate(t.LOS = log(LOS)) %>% 
+    select(-c(ID, stage_adm))
 
 # Save as .RDS file
 saveRDS(regdf, "/Users/sreynolds2/Documents/GitHub/MS-UTSW_Covid_Staging/data/regdf_11.08.21.rds")
